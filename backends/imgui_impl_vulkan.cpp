@@ -5,7 +5,6 @@
 //  [X] Renderer: Support for large meshes (64k+ vertices) with 16-bit indices.
 //  [x] Platform: Multi-viewport / platform windows. With issues (flickering when creating a new viewport).
 // Missing features:
-//  [ ] Renderer: User texture binding. Changes of ImTextureID aren't supported by this backend! See https://github.com/ocornut/imgui/pull/914
 
 // You can copy and use unmodified imgui_impl_* files in your project. See examples/ folder for examples of using this.
 // If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
@@ -93,7 +92,6 @@ static VkDeviceSize             g_BufferMemoryAlignment = 256;
 static VkPipelineCreateFlags    g_PipelineCreateFlags = 0x00;
 static VkDescriptorSetLayout    g_DescriptorSetLayout = VK_NULL_HANDLE;
 static VkPipelineLayout         g_PipelineLayout = VK_NULL_HANDLE;
-static VkDescriptorSet          g_DescriptorSet = VK_NULL_HANDLE;
 static VkPipeline               g_Pipeline = VK_NULL_HANDLE;
 static uint32_t                 g_Subpass = 0;
 static VkShaderModule           g_ShaderModuleVert;
@@ -291,8 +289,15 @@ static void ImGui_ImplVulkan_SetupRenderState(ImDrawData* draw_data, VkPipeline 
     // Bind pipeline and descriptor sets:
     {
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        // ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+        // Font descriptor set is stored in `draw_data->TextureID` and bound when executing the draw command
+        // OLD:
+        /*
         VkDescriptorSet desc_set[1] = { g_DescriptorSet };
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_PipelineLayout, 0, 1, desc_set, 0, NULL);
+        */
+        // New:
+        // ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
     }
 
     // Bind Vertex And Index Buffer:
@@ -447,6 +452,15 @@ void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer comm
                     scissor.extent.height = (uint32_t)(clip_rect.w - clip_rect.y);
                     vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
+                    // ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+                    // Bind the descriptor set for a given texture id. For fonts, this is the font atlas.
+                    // Users can render a texture by adding it via `ImGui_ImplVulkan_AddTexture`.
+                    // OLD:
+                    // New:
+                    VkDescriptorSet desc_set[1] = { (VkDescriptorSet)pcmd->TextureId };
+                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_PipelineLayout, 0, 1, desc_set, 0, NULL);
+                    // ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
+
                     // Draw
                     vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
                 }
@@ -513,6 +527,10 @@ bool ImGui_ImplVulkan_CreateFontsTexture(VkCommandBuffer command_buffer)
         check_vk_result(err);
     }
 
+    // ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+    // The font descriptor should be allocated & updated/written the same way all texture descriptors are.
+    // OLD:
+    /*
     // Update the Descriptor Set:
     {
         VkDescriptorImageInfo desc_image[1] = {};
@@ -527,6 +545,11 @@ bool ImGui_ImplVulkan_CreateFontsTexture(VkCommandBuffer command_buffer)
         write_desc[0].pImageInfo = desc_image;
         vkUpdateDescriptorSets(v->Device, 1, write_desc, 0, NULL);
     }
+    //*/
+    // New:
+    ImTextureID font_texture_id = (ImTextureID)ImGui_ImplVulkan_CreateTexture();
+    ImGui_ImplVulkan_UpdateTexture(font_texture_id, g_FontView, g_FontSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    // ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
 
     // Create the Upload Buffer:
     {
@@ -604,7 +627,15 @@ bool ImGui_ImplVulkan_CreateFontsTexture(VkCommandBuffer command_buffer)
     }
 
     // Store our identifier
+    // ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+    // The font descriptor should be allocated & updated/written the same way all texture descriptors are.
+    // OLD:
+    /*
     io.Fonts->TexID = (ImTextureID)(intptr_t)g_FontImage;
+    */
+    // New:
+    io.Fonts->TexID = font_texture_id;
+    // ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
 
     return true;
 }
@@ -663,7 +694,14 @@ static void ImGui_ImplVulkan_CreateDescriptorSetLayout(VkDevice device, const Vk
     binding[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     binding[0].descriptorCount = 1;
     binding[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    // ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+    // By setting the sampler as the immutable one for the entire set, images cannot provide their own samplers
+    // OLD:
+    /*
     binding[0].pImmutableSamplers = sampler;
+    */
+    // New:
+    // ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
     VkDescriptorSetLayoutCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     info.bindingCount = 1;
@@ -828,7 +866,14 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
         binding[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         binding[0].descriptorCount = 1;
         binding[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        // ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+        // By setting the sampler as the immutable one for the entire set, images cannot provide their own samplers
+        // OLD:
+        /*
         binding[0].pImmutableSamplers = sampler;
+        */
+        // New:
+        // ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
         VkDescriptorSetLayoutCreateInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         info.bindingCount = 1;
@@ -838,6 +883,10 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
     }
 
     // Create Descriptor Set:
+    // ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+    // The descriptor set for fonts is allocated when the descriptor is written to via `ImGui_Impl_AddTexture`
+    // OLD:
+    /*
     {
         VkDescriptorSetAllocateInfo alloc_info = {};
         alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -847,6 +896,9 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
         err = vkAllocateDescriptorSets(v->Device, &alloc_info, &g_DescriptorSet);
         check_vk_result(err);
     }
+    */
+    // New:
+    // ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
 
     if (!g_PipelineLayout)
     {
@@ -1285,7 +1337,7 @@ void ImGui_ImplVulkanH_CreateOrResizeWindow(VkInstance instance, VkPhysicalDevic
 {
     (void)instance;
     ImGui_ImplVulkanH_CreateWindowSwapChain(physical_device, device, wd, allocator, width, height, min_image_count);
-    ImGui_ImplVulkan_CreatePipeline(device, allocator, VK_NULL_HANDLE, wd->RenderPass, VK_SAMPLE_COUNT_1_BIT, &wd->Pipeline);
+    ImGui_ImplVulkan_CreatePipeline(device, allocator, VK_NULL_HANDLE, wd->RenderPass, VK_SAMPLE_COUNT_1_BIT, &wd->Pipeline, g_Subpass);
     ImGui_ImplVulkanH_CreateWindowCommandBuffers(physical_device, device, wd, queue_family, allocator);
 }
 
@@ -1540,3 +1592,44 @@ void ImGui_ImplVulkan_ShutdownPlatformInterface()
 {
     ImGui::DestroyPlatformWindows();
 }
+
+// ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+// Allocate and Update a descriptor set for each image that can be viewed.
+// Descriptor sets are allocated from the global descriptor pool, and are cleaned up when that pool is destroyed.
+// OLD:
+// New:
+ImTextureID ImGui_ImplVulkan_CreateTexture()
+{
+    ImGui_ImplVulkan_InitInfo *v = &g_VulkanInitInfo;
+    VkResult err;
+    VkDescriptorSet descriptorSet;
+    // Allocate the descriptor set
+    {
+        VkDescriptorSetAllocateInfo alloc_info = {};
+        alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        alloc_info.descriptorPool = v->DescriptorPool;
+        alloc_info.descriptorSetCount = 1;
+        alloc_info.pSetLayouts = &g_DescriptorSetLayout;
+        err = vkAllocateDescriptorSets(v->Device, &alloc_info, &descriptorSet);
+        check_vk_result(err);
+    }
+    return (ImTextureID)descriptorSet;
+}
+
+void ImGui_ImplVulkan_UpdateTexture(ImTextureID id, VkImageView view, VkSampler sampler, VkImageLayout layout)
+{
+    // Map the descriptor set to the image + sampler
+    ImGui_ImplVulkan_InitInfo *v = &g_VulkanInitInfo;   
+    VkDescriptorImageInfo desc_image[1] = {};
+    desc_image[0].sampler = sampler;
+    desc_image[0].imageView = view;
+    desc_image[0].imageLayout = layout;
+    VkWriteDescriptorSet write_desc[1] = {};
+    write_desc[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write_desc[0].dstSet = VkDescriptorSet(id);
+    write_desc[0].descriptorCount = 1;
+    write_desc[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write_desc[0].pImageInfo = desc_image;
+    vkUpdateDescriptorSets(v->Device, 1, write_desc, 0, NULL);
+}
+// ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~

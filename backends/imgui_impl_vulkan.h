@@ -5,7 +5,6 @@
 //  [X] Renderer: Support for large meshes (64k+ vertices) with 16-bit indices.
 // Missing features:
 //  [ ] Platform: Multi-viewport / platform windows.
-//  [ ] Renderer: User texture binding. Changes of ImTextureID aren't supported by this backend! See https://github.com/ocornut/imgui/pull/914
 
 // You can copy and use unmodified imgui_impl_* files in your project. See examples/ folder for examples of using this.
 // If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
@@ -52,7 +51,18 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, V
 IMGUI_IMPL_API bool     ImGui_ImplVulkan_CreateFontsTexture(VkCommandBuffer command_buffer);
 IMGUI_IMPL_API void     ImGui_ImplVulkan_DestroyFontUploadObjects();
 IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_count); // To override MinImageCount after initialization (e.g. if swap chain is recreated)
-
+// ~~~~~~~~~~ START: TemportalEngine ~~~~~~~~~~
+// Add support for vulkan rendering of textures. ImTextureID is a descriptor set
+// OLD:
+// New:
+// Allocates vulkan descriptors so that textures can be rendered.
+// Because descriptors (descriptor sets) are allocated from the global descriptor pool,
+// they need not be manually cleaned up by users.
+// Once a texture is allocated, is stays allocated until ImGui is destroyed.
+// Because of this limitation, users are encouraged to keep a pool of allocated textures and re-use ones that are not currently being rendered.
+IMGUI_IMPL_API ImTextureID ImGui_ImplVulkan_CreateTexture();
+IMGUI_IMPL_API void     ImGui_ImplVulkan_UpdateTexture(ImTextureID id, VkImageView view, VkSampler sampler, VkImageLayout layout);
+// ~~~~~~~~~~~~ END: TemportalEngine ~~~~~~~~~~
 
 //-------------------------------------------------------------------------
 // Internal / Miscellaneous Vulkan Helpers
